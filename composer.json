@@ -1,0 +1,21 @@
+{
+    "name": "bybzmt/imagefilter",
+    "description": "http image resize crop fit fill",
+    "keywords": ["image resize", "image crop"],
+    "homepage": "http://github.com/bybzmt/imagefilter",
+    "type": "library",
+    "license": "Apache-2.0",
+    "authors": [
+        {
+            "name": "bybzmt",
+            "email": "other@bybzmt.me",
+            "homepage": "http://github.com/bybzmt"
+        }
+    ],
+    "require": {
+        "php": ">=5.3.0"
+    },
+    "autoload": {
+        "classmap" : ["imagefilter.php"]
+    }
+}
