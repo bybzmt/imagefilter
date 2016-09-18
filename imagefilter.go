@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"encoding/base64"
+	"errors"
 	"flag"
 	"github.com/disintegration/imaging"
 	"image"
@@ -11,34 +12,88 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"strconv"
-	"strings"
 	"willnorris.com/go/gifresize"
 )
 
 var basedir = flag.String("dir", "./", "markdown files dir")
 var addr = flag.String("addr", ":8080", "Listen addr:port")
 var signatureKey = flag.String("signatureKey", "", "Signature Key")
+var debug = flag.Bool("debug", false, "debug switch")
 
-var exts = map[string]int8{
-	".png":  1,
-	".jpg":  1,
-	".jpeg": 1,
-	".gif":  1,
-	".webp": 1,
-}
+const op_ori = 1
+const op_resize = 2
+const op_crop = 3
+const op_fit = 4
+const op_fill = 5
 
-var mime = map[string]string{
-	".png":  "image/png",
-	".jpg":  "image/jpeg",
-	".jpeg": "image/jpeg",
-}
+const anchor_top_left = 1
+const anchor_top = 2
+const anchor_top_right = 3
+const anchor_left = 4
+const anchor_center = 5
+const anchor_right = 6
+const anchor_bottom_left = 7
+const anchor_bottom = 8
+const anchor_bottom_right = 9
+
+const format_auto = 0
+const format_jpeg = 1
+const format_png = 2
+const format_gif = 3
 
 func main() {
 	flag.Parse()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		filename := path.Join(*basedir, path.Clean(r.URL.Path))
+		if len(r.URL.Path) < 9 {
+			if *debug {
+				http.Error(w, "data too short", 400)
+			} else {
+				http.NotFound(w, r)
+			}
+			return
+		}
+
+		raw, err := base64.RawURLEncoding.DecodeString(r.URL.Path[1:])
+		if err != nil {
+			if *debug {
+				http.Error(w, "base64 decode err"+err.Error(), 400)
+			} else {
+				http.NotFound(w, r)
+			}
+			return
+		}
+
+		if raw[0] != 1 {
+			if *debug {
+				http.Error(w, "protol version err", 400)
+			} else {
+				http.NotFound(w, r)
+			}
+			return
+		}
+
+		data, err := checkSign(raw[1:])
+		if err != nil {
+			if *debug {
+				http.Error(w, "sign err:"+err.Error(), 400)
+			} else {
+				http.NotFound(w, r)
+			}
+			return
+		}
+
+		op, anchor_s, format, width, height, file, err := decodePath(data)
+		if err != nil {
+			if *debug {
+				http.Error(w, "decode err:"+err.Error(), 400)
+			} else {
+				http.NotFound(w, r)
+			}
+			return
+		}
+
+		filename := path.Join(*basedir, path.Clean(file))
 
 		fh, err := os.Open(filename)
 		if err != nil {
@@ -59,21 +114,11 @@ func main() {
 			return
 		}
 
-		ext := strings.ToLower(path.Ext(filename))
-		if exts[ext] == 0 {
+		//原图不转格式时不需要处理
+		if op == op_ori && format == format_auto {
 			http.ServeFile(w, r, filename)
 			return
 		}
-
-		if !checkSign(w, r) {
-			return
-		}
-
-		op := r.FormValue("o")
-		width_s := r.FormValue("w")
-		height_s := r.FormValue("h")
-		format := r.FormValue("f")
-		anchor_s := r.FormValue("a")
 
 		//读取图片格式
 		img_cfg, ori_format, err := image.DecodeConfig(fh)
@@ -82,54 +127,6 @@ func main() {
 			return
 		}
 
-		if format == "" {
-			switch ori_format {
-			case "png":
-				format = "png"
-			case "jpeg":
-				format = "jpeg"
-			case "gif":
-				format = "gif"
-			default:
-				format = "jpeg"
-			}
-		}
-
-		//原图不转格式时不需要处理
-		if op == "ori" && ori_format == format {
-			http.ServeFile(w, r, filename)
-			return
-		}
-
-		//裁切时定位参数
-		var anchor imaging.Anchor
-		switch anchor_s {
-		case "center":
-			anchor = imaging.Center
-		case "topleft":
-			anchor = imaging.TopLeft
-		case "", "top":
-			anchor = imaging.Top
-		case "topright":
-			anchor = imaging.TopRight
-		case "left":
-			anchor = imaging.Left
-		case "right":
-			anchor = imaging.Right
-		case "bottomleft":
-			anchor = imaging.BottomLeft
-		case "bottom":
-			anchor = imaging.Bottom
-		case "bottomright":
-			anchor = imaging.BottomRight
-		default:
-			http.Error(w, "unsupport anchor: "+anchor_s, 400)
-			return
-		}
-
-		//宽高
-		width, _ := strconv.Atoi(width_s)
-		height, _ := strconv.Atoi(height_s)
 		//为0时不改变宽高
 		if width == 0 {
 			width = img_cfg.Width
@@ -138,32 +135,75 @@ func main() {
 			height = img_cfg.Height
 		}
 
+		if format == format_auto {
+			switch ori_format {
+			case "png":
+				format = format_png
+			case "jpeg":
+				format = format_jpeg
+			case "gif":
+				format = format_gif
+			default:
+				format = format_jpeg
+			}
+		}
+
+		//裁切时定位参数
+		var anchor imaging.Anchor
+		switch anchor_s {
+		case anchor_top_left:
+			anchor = imaging.TopLeft
+		case anchor_top:
+			anchor = imaging.Top
+		case anchor_top_right:
+			anchor = imaging.TopRight
+		case anchor_left:
+			anchor = imaging.Left
+		case anchor_center:
+			anchor = imaging.Center
+		case anchor_right:
+			anchor = imaging.Right
+		case anchor_bottom_left:
+			anchor = imaging.BottomLeft
+		case anchor_bottom:
+			anchor = imaging.Bottom
+		case anchor_bottom_right:
+			anchor = imaging.BottomRight
+		default:
+			http.Error(w, "unsupport anchor", 400)
+			return
+		}
+
 		var trans func(img image.Image) image.Image
 
 		switch op {
-		case "ori":
+		case op_ori:
 			//原图不需要处理
 			trans = func(img image.Image) image.Image {
 				return img
 			}
-		case "resize":
+		case op_resize:
 			trans = func(img image.Image) image.Image {
 				return imaging.Resize(img, width, height, imaging.Lanczos)
 			}
-		case "crop":
+		case op_crop:
 			trans = func(img image.Image) image.Image {
 				return imaging.CropAnchor(img, width, height, anchor)
 			}
-		case "fit":
+		case op_fit:
 			trans = func(img image.Image) image.Image {
 				return imaging.Fit(img, width, height, imaging.Lanczos)
 			}
-		case "fill":
+		case op_fill:
 			trans = func(img image.Image) image.Image {
 				return imaging.Fill(img, width, height, anchor, imaging.Lanczos)
 			}
 		default:
-			http.Error(w, "unsupport op: "+op, 400)
+			if *debug {
+				http.Error(w, "unsupport op", 400)
+			} else {
+				http.NotFound(w, r)
+			}
 			return
 		}
 
@@ -171,7 +211,7 @@ func main() {
 		fh.Seek(0, os.SEEK_SET)
 
 		//动画
-		if ori_format == "gif" && format == "gif" {
+		if format == format_gif && ori_format == "gif" {
 			w.Header().Set("Content-Type", "image/gif")
 			gifresize.Process(w, fh, trans)
 			return
@@ -180,60 +220,66 @@ func main() {
 		//非动画图
 		img, ori_format, err := image.Decode(fh)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			if *debug {
+				http.Error(w, "image decode err: "+err.Error(), 500)
+			} else {
+				http.NotFound(w, r)
+			}
 			return
 		}
 		img = trans(img)
 
 		switch format {
-		case "png":
+		case format_png:
 			w.Header().Set("Content-Type", "image/png")
 			imaging.Encode(w, img, imaging.PNG)
-		case "jpg", "jpeg":
+		case format_jpeg:
 			w.Header().Set("Content-Type", "image/jpeg")
 			imaging.Encode(w, img, imaging.JPEG)
-		case "gif":
+		case format_gif:
 			w.Header().Set("Content-Type", "image/gif")
 			imaging.Encode(w, img, imaging.GIF)
 		default:
-			http.Error(w, "unsupport format: "+format, 400)
+			if *debug {
+				http.Error(w, "unsupport format", 400)
+			} else {
+				http.NotFound(w, r)
+			}
+			return
 		}
 	})
 
+	log.Println("running...")
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
 
-func checkSign(w http.ResponseWriter, r *http.Request) bool {
-	if *signatureKey == "" {
-		return true
+func checkSign(raw []byte) ([]byte, error) {
+	if len(raw) < 2 {
+		return nil, errors.New("data too shart")
 	}
 
-	op := r.FormValue("o")
-	width := r.FormValue("w")
-	height := r.FormValue("h")
-	format := r.FormValue("f")
-	anchor := r.FormValue("a")
-	sign_s := r.FormValue("s")
-
-	if op == "" || sign_s == "" {
-		http.Error(w, "param empty", 400)
-		return false
+	if raw[0] == 0 {
+		if *signatureKey == "" {
+			return raw[1:], nil
+		} else {
+			return nil, errors.New("sign empty")
+		}
 	}
 
-	sign, err := base64.RawURLEncoding.DecodeString(sign_s)
-	if err != nil {
-		http.Error(w, "base64 error: " + err.Error(), 400)
-		return false
+	sign_len := int(raw[0])
+
+	if len(raw) < 1+sign_len {
+		return nil, errors.New("sign data too shart")
 	}
 
-	msg := r.URL.Path + op + width + height + format + anchor
+	mac := raw[1 : 1+sign_len]
+	data := raw[1+sign_len:]
 
-	if !CheckMAC([]byte(msg), sign) {
-		http.Error(w, "sign error", 400)
-		return false
+	if !CheckMAC(data, mac) {
+		return nil, errors.New("sign not eq")
 	}
 
-	return true;
+	return data, nil
 }
 
 func CheckMAC(message, messageMAC []byte) bool {
@@ -241,4 +287,23 @@ func CheckMAC(message, messageMAC []byte) bool {
 	mac.Write(message)
 	expectedMAC := mac.Sum(nil)
 	return hmac.Equal(messageMAC, expectedMAC)
+}
+
+func decodePath(raw []byte) (op, anchor, format, width, height int, file string, err error) {
+	if len(raw) < 6 {
+		err = errors.New("data too short")
+		return
+	}
+
+	op = int(raw[0] >> 4)
+	anchor = int(raw[0] & 0xf)
+
+	format = int(raw[1])
+
+	width = int(raw[2])<<8 | int(raw[3])
+	height = int(raw[4])<<8 | int(raw[5])
+
+	file = string(raw[6:])
+
+	return
 }
