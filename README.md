@@ -24,11 +24,11 @@ fill   | 等比例缩放，并冲满整图，切掉多余的部分
 
 锚点位置说明：
 
-topleft    | top    | topright
------------|--------|-------
-left       | center | right
------------|--------|-------
-bottomleft | bottom | bottomright
+位置 | 左         | 中     | 右
+-----|------------|--------|---------
+上   | topleft    | top    | topright
+中   | left       | center | right
+下   | bottomleft | bottom | bottomright
 
 
 这个程序是用在用户记问时生成相应尺寸的图片，这样子可以在上传图片时省掉很多操作。
