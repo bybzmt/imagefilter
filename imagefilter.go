@@ -208,7 +208,6 @@ func checkSign(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 
-	randstr := r.FormValue("t")
 	op := r.FormValue("o")
 	width := r.FormValue("w")
 	height := r.FormValue("h")
@@ -216,7 +215,7 @@ func checkSign(w http.ResponseWriter, r *http.Request) bool {
 	anchor := r.FormValue("a")
 	sign_s := r.FormValue("s")
 
-	if randstr == "" || op == "" || sign_s == "" {
+	if op == "" || sign_s == "" {
 		http.Error(w, "param empty", 400)
 		return false
 	}
@@ -227,7 +226,7 @@ func checkSign(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 
-	msg := r.URL.Path + op + width + height + format + anchor + randstr
+	msg := r.URL.Path + op + width + height + format + anchor
 
 	if !CheckMAC([]byte(msg), sign) {
 		http.Error(w, "sign error", 400)

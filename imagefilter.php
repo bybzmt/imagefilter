@@ -7,13 +7,11 @@ class imagefilter
 
 	public function build_url($path, $op, $width, $height, $format="", $anchor="")
 	{
-		$randstr = mt_rand(0, 2000000000);
-		$msg = $path . $op . $width . $height . $format . $anchor . $randstr;
+		$msg = $path . $op . $width . $height . $format . $anchor;
 
 		$sign = self::base64url_encode(hash_hmac("md5", $msg, self::$signatureKey, true));
 
 		$data = array(
-			't' => $randstr,
 			'o' => $op,
 			'w' => $width,
 			'h' => $height,
