@@ -5,22 +5,26 @@ class imagefilter
 {
 	static public $signatureKey="";
 
-	public function build_url($path, $op, $width, $height, $format="", $anchor)
+	public function build_url($path, $op, $width, $height, $format="", $anchor="")
 	{
-		$rand = mt_rand(0, PHP_INT_MAX);
+		$randstr = mt_rand(0, 2000000000);
 		$msg = $path . $op . $width . $height . $format . $anchor . $randstr;
 
-		$sign = self::base64url_encode(hash_hmac("sha256", $msg, self::$signatureKey, true));
+		$sign = self::base64url_encode(hash_hmac("md5", $msg, self::$signatureKey, true));
 
 		$data = array(
 			't' => $randstr,
 			'o' => $op,
 			'w' => $width,
 			'h' => $height,
-			'f' => $format,
-			'a' => $anchor,
 			's' => $sign,
 		);
+		if ($format) {
+			$data['f'] = $format;
+		}
+		if ($anchor) {
+			$data['a'] = $anchor;
+		}
 
 		return $path . "?" . http_build_query($data);
 	}

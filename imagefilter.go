@@ -2,7 +2,7 @@ package main
 
 import (
 	"crypto/hmac"
-	"crypto/sha256"
+	"crypto/md5"
 	"encoding/base64"
 	"flag"
 	"github.com/disintegration/imaging"
@@ -66,7 +66,6 @@ func main() {
 		}
 
 		if !checkSign(w, r) {
-			http.NotFound(w, r)
 			return
 		}
 
@@ -218,21 +217,28 @@ func checkSign(w http.ResponseWriter, r *http.Request) bool {
 	sign_s := r.FormValue("s")
 
 	if randstr == "" || op == "" || sign_s == "" {
+		http.Error(w, "param empty", 400)
 		return false
 	}
 
-	sign, err := base64.URLEncoding.DecodeString(sign_s)
+	sign, err := base64.RawURLEncoding.DecodeString(sign_s)
 	if err != nil {
+		http.Error(w, "base64 error: " + err.Error(), 400)
 		return false
 	}
 
 	msg := r.URL.Path + op + width + height + format + anchor + randstr
 
-	return CheckMAC([]byte(msg), sign)
+	if !CheckMAC([]byte(msg), sign) {
+		http.Error(w, "sign error", 400)
+		return false
+	}
+
+	return true;
 }
 
 func CheckMAC(message, messageMAC []byte) bool {
-	mac := hmac.New(sha256.New, []byte(*signatureKey))
+	mac := hmac.New(md5.New, []byte(*signatureKey))
 	mac.Write(message)
 	expectedMAC := mac.Sum(nil)
 	return hmac.Equal(messageMAC, expectedMAC)
