@@ -38,6 +38,10 @@ class imagefilter
 
 		//var_dump(unpack('C*', $data));
 		$sign_len = unpack('C', $data[1])[1];
+		if (strlen($data) < $sign_len + 8) {
+			return false;
+		}
+
 		$sign = substr($data, 2, $sign_len);
 		$params = substr($data, 2+$sign_len, 6);
 		$path = substr($data, 2+$sign_len+6);
