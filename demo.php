@@ -4,9 +4,12 @@ require __DIR__ . "/imagefilter.php";
 
 bybzmt\imagefilter::$signatureKey = "abcd";
 
-$url = new bybzmt\imagefilter();
+$image = new bybzmt\imagefilter();
 
-var_dump($url->build_url("/imgs/1.png", 'fill', 300, 300));
+$url = $image->build_url("/imgs/1.png", 'fill', 300, 300);
+var_dump($url);
+//解码
+var_dump($image->decode($url));
 
 //指定格式
-var_dump($url->build_url("/imgs/1.png", 'fit', 300, 300, 'jpeg'));
+//var_dump($image->build_url("/imgs/1.png", 'fit', 300, 300, 'jpeg'));
