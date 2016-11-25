@@ -44,7 +44,6 @@ class imagefilter
 		} else {
 			$s_format = "";
 		}
-		var_dump($s_format);
 
 		// data(6byte+) = op(4bit) + anchor(4bit) + format(1byte) + width(2byte) + height(2byte) + path
 		$data = pack('C', $op << 4 | $anchor) . pack('C', $format) . pack('n', $width) . pack('n', $height) . $path;

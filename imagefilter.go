@@ -55,7 +55,7 @@ func main() {
 			ext = r.URL.Path[pn:]
 		}
 
-		log.Println(pn, query, ext)
+		//log.Println(pn, query, ext)
 
 		if len(query) < 9 {
 			if *debug {
