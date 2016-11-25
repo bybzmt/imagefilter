@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strings"
 	"willnorris.com/go/gifresize"
 )
 
@@ -45,7 +46,18 @@ func main() {
 	flag.Parse()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if len(r.URL.Path) < 9 {
+		var query, ext string
+		pn := strings.IndexByte(r.URL.Path, '.')
+		if pn < 0 {
+			query = r.URL.Path[1:]
+		} else {
+			query = r.URL.Path[1:pn]
+			ext = r.URL.Path[pn:]
+		}
+
+		log.Println(pn, query, ext)
+
+		if len(query) < 9 {
 			if *debug {
 				http.Error(w, "data too short", 400)
 			} else {
@@ -54,7 +66,7 @@ func main() {
 			return
 		}
 
-		raw, err := base64.RawURLEncoding.DecodeString(r.URL.Path[1:])
+		raw, err := base64.RawURLEncoding.DecodeString(query)
 		if err != nil {
 			if *debug {
 				http.Error(w, "base64 decode err"+err.Error(), 400)
@@ -73,7 +85,7 @@ func main() {
 			return
 		}
 
-		data, err := checkSign(raw[1:])
+		data, err := checkSign(raw[1:], []byte(ext))
 		if err != nil {
 			if *debug {
 				http.Error(w, "sign err:"+err.Error(), 400)
@@ -253,7 +265,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
 
-func checkSign(raw []byte) ([]byte, error) {
+func checkSign(raw, ext []byte) ([]byte, error) {
 	if len(raw) < 2 {
 		return nil, errors.New("data too shart")
 	}
@@ -275,7 +287,7 @@ func checkSign(raw []byte) ([]byte, error) {
 	mac := raw[1 : 1+sign_len]
 	data := raw[1+sign_len:]
 
-	if !CheckMAC(data, mac) {
+	if !CheckMAC(append(data, ext...), mac) {
 		return nil, errors.New("sign not eq")
 	}
 
