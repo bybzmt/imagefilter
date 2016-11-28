@@ -68,6 +68,12 @@ class imagefilter
 		if (strlen($url) < 9) {
 			return false;
 		}
+
+		$idx = strpos($url, '.');
+		if ($idx !== false) {
+			$url = substr($url, 0, $idx);
+		}
+
 		$data = $this->_base64url_decode(substr($url, 1));
 
 		//var_dump(unpack('C*', $data));
