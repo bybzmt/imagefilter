@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/hmac"
 	"crypto/md5"
 	"encoding/base64"
@@ -8,6 +10,7 @@ import (
 	"flag"
 	"github.com/disintegration/imaging"
 	"image"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -16,10 +19,11 @@ import (
 	"willnorris.com/go/gifresize"
 )
 
-var basedir = flag.String("dir", "./", "markdown files dir")
-var addr = flag.String("addr", ":8080", "Listen addr:port")
+var basedir = flag.String("dir", "./", "local files dir")
+var addr = flag.String("addr", ":http", "Listen addr:port")
 var signatureKey = flag.String("signatureKey", "", "Signature Key")
 var debug = flag.Bool("debug", false, "debug switch")
+var proxy_pass = flag.String("proxy_pass", "", "proxy pass (default use local file)")
 
 const op_ori = 1
 const op_resize = 2
@@ -44,6 +48,10 @@ const format_gif = 3
 
 func main() {
 	flag.Parse()
+
+	if *proxy_pass == "" {
+		*proxy_pass = strings.TrimRight(*proxy_pass, "/")
+	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		var query, ext string
@@ -105,35 +113,54 @@ func main() {
 			return
 		}
 
-		filename := path.Join(*basedir, path.Clean(file))
+		var fr io.Reader
 
-		fh, err := os.Open(filename)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		defer fh.Close()
+		if *proxy_pass == "" {
+			filename := path.Join(*basedir, path.Clean(file))
 
-		fi, err := fh.Stat()
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
+			fh, err := os.Open(filename)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			defer fh.Close()
 
-		if fi.IsDir() {
-			//http.ServeFile(w, r, filename)
-			http.NotFound(w, r)
-			return
+			fi, err := fh.Stat()
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+
+			if fi.IsDir() {
+				http.NotFound(w, r)
+				return
+			}
+
+			fr = fh
+		} else {
+			resp, err := http.Get(*proxy_pass + "/" + path.Clean(file))
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			defer resp.Body.Close()
+
+			fr = resp.Body
 		}
 
 		//原图不转格式时不需要处理
 		if op == op_ori && format == format_auto {
-			http.ServeFile(w, r, filename)
+			io.Copy(w, fr)
 			return
 		}
 
+		br := bufio.NewReaderSize(fr, 4096)
+
+		f1, err := br.Peek(256)
+		br2 := bytes.NewReader(f1)
+
 		//读取图片格式
-		img_cfg, ori_format, err := image.DecodeConfig(fh)
+		img_cfg, ori_format, err := image.DecodeConfig(br2)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -219,18 +246,15 @@ func main() {
 			return
 		}
 
-		//重置指针
-		fh.Seek(0, os.SEEK_SET)
-
 		//动画
 		if format == format_gif && ori_format == "gif" {
 			w.Header().Set("Content-Type", "image/gif")
-			gifresize.Process(w, fh, trans)
+			gifresize.Process(w, br, trans)
 			return
 		}
 
 		//非动画图
-		img, ori_format, err := image.Decode(fh)
+		img, ori_format, err := image.Decode(br)
 		if err != nil {
 			if *debug {
 				http.Error(w, "image decode err: "+err.Error(), 500)
