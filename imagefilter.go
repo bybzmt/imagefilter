@@ -156,7 +156,7 @@ func main() {
 
 		br := bufio.NewReaderSize(fr, 4096)
 
-		f1, err := br.Peek(256)
+		f1, err := br.Peek(2048)
 		br2 := bytes.NewReader(f1)
 
 		//读取图片格式
