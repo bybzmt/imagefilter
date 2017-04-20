@@ -154,15 +154,15 @@ func main() {
 			return
 		}
 
-		br := bufio.NewReaderSize(fr, 4096)
+		br := bufio.NewReaderSize(fr, 1024*64)
 
-		f1, err := br.Peek(2048)
+		f1, err := br.Peek(1024 * 64)
 		br2 := bytes.NewReader(f1)
 
 		//读取图片格式
 		img_cfg, ori_format, err := image.DecodeConfig(br2)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			http.Error(w, "DecodeConfig:"+err.Error(), 500)
 			return
 		}
 
