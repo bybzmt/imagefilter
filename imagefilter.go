@@ -17,6 +17,18 @@ import (
 	"path"
 	"strings"
 	"willnorris.com/go/gifresize"
+
+	_ "github.com/Kagami/go-avif"
+	_ "github.com/biessek/golang-ico"
+
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+
+	_ "github.com/oov/psd"
+	_ "golang.org/x/image/bmp"
+	_ "golang.org/x/image/tiff"
+	_ "golang.org/x/image/webp"
 )
 
 var basedir = flag.String("dir", "./", "local files dir")
